@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="hu">
+
+
+<head>
+    <meta charset=utf-8>
+    <title>Three.js Object Tester Skeleton</title>
+    <style>
+        #info {
+            background: black;
+            color: red;
+        }
+        #info2 {
+            background: black;
+            color: red;
+            position: absolute;
+            right: 0;
+            top: 0;
+
+
+        }
+        body { margin: 0; overflow: hidden; }
+        canvas { width: 1%; height: 1% }
+    </style>
+</head>
+
+<div id="info">Perényi-Rimai Máté Miklós, BVF1S7, üzemmérnök informatikus, 2022/23/1
+</div>
+
+<div id="info2">Űrhajó mozgás előre: W Mozgás hátra: S
+</div>
+<body>
+
+<script async src="./dist/es-module-shims.js"></script>
+<script type="importmap">
+{
+    "imports": {
+        "three": "./js-r143/build/three.module.js",
+        "trackballcontrols": "./js-r143/examples/jsm/controls/TrackballControls.js",
+       "OBJLoader": "./js-r143/examples/jsm/loaders/OBJLoader.js",
+       "MTLLoader": "./js-r143/examples/jsm/loaders/MTLLoader.js",
+       "lil-gui": "./js-r143/examples/jsm/libs/lil-gui.module.min.js"
+    }
+}
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { TrackballControls } from 'trackballcontrols';
+    import { OBJLoader } from 'OBJLoader';
+    import { MTLLoader } from 'MTLLoader';
+    import { GUI } from 'lil-gui';
+
+
+
+    // Globális változók
+    let container;
+    let OFFSETLEFT, OFFSETTOP;
+    let WIDTH, HEIGHT, aspectRatio;
+    let renderer;
+    let scene, camera;
+    let controls;
+    let SystemGroup;
+    let szondaGeamotry;
+    let szondaMaterial;
+    let szondaMesh;
+    let Angle;
+    let dodekaMesh, dodekaMesh2, dodekaMesh3, dodekaMesh4, dodekaMesh5;
+    let spheremesh;
+    let pos_x = -5.0;
+    let pos_x_dir = 1.0;
+    let cone1, cone;
+    let cylinder;
+    let groupLoaded;
+    let object;
+    let renderObject, lastRenderObject;
+
+    let guiParams = {
+        rotationX: 0.01,
+        rotationY: 0.005,
+        colorSolid: 0x0,
+        colorWire: 0x0,
+        object: 'kocka',
+        stopButton: function() {
+            this.rotationX = 0;
+            this.rotationY = 0;
+        }
+    };
+
+    function addControlGui( controlObject ) {
+        let gui = new GUI( { autoPlace: false });
+        gui.add( guiParams, 'rotationX', -0.01, 0.01).step(0.001).listen();
+        gui.add( guiParams, 'rotationY', -0.01, 0.01).listen();
+        gui.addColor( guiParams, 'colorSolid');
+        gui.addColor( guiParams, 'colorWire');
+        gui.add( guiParams, 'object', [ 'kocka', 'gömb' ] ).name( 'Tárgy' );
+        gui.add( guiParams, 'stopButton').name( 'Forgás állj!' );
+
+        gui.domElement.style.position = 'absolute';
+        gui.domElement.style.top = OFFSETTOP + 'px';
+        gui.domElement.style.left = OFFSETLEFT + WIDTH - gui.width + 'px';
+        document.body.appendChild( gui.domElement );
+    }
+
+
+    init();
+    // Egy képkocka rajzolása
+    // render();
+    // Animáció indítása
+    animate();
+
+    const mtlLoader = new MTLLoader()
+    mtlLoader.load(
+        'assets/models/PerenyiRimaiMateMiklos_BVF1S7.mtl',
+        (materials) => {
+            materials.preload()
+
+            const objLoader = new OBJLoader()
+            objLoader.setMaterials(materials)
+            objLoader.load(
+                'assets/models/PerenyiRimaiMateMiklos_BVF1S7.obj',
+                (object) => {
+                    scene.add(object)
+                    object.position.set(30,30,30);
+                    object.scale.set(7,7,7)
+                    object.rotation.x = -5
+
+
+                    document.onkeydown = function (e){
+                        if (e.keyCode === 87){
+                            object.position.x -= 1;
+                        }
+
+                        if (e.keyCode === 83){
+                            object.position.x += 1;
+                        }
+
+                    }
+                },
+                (xhr) => {
+                    console.log((xhr.loaded / xhr.total) * 100 + '% loaded')
+                },
+                (error) => {
+                    console.log('An error happened')
+                }
+            )
+        },
+        (xhr) => {
+            console.log((xhr.loaded / xhr.total) * 100 + '% loaded')
+        },
+        (error) => {
+            console.log('An error happened')
+        }
+    )
+
+
+
+
+    function init() {
+
+
+        Angle = 0.1;
+
+        // Böngésző ablakméret lekérése és méretarány számítása
+        HEIGHT = window.innerHeight;
+        WIDTH = window.innerWidth;
+        aspectRatio = WIDTH / HEIGHT;
+
+        // Renderer létrehozása és DOM-hoz adása
+        renderer = new THREE.WebGLRenderer( { antialias: true } );
+        renderer.setSize( WIDTH, HEIGHT );
+        renderer.setClearColor( 0x000000 );
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild( renderer.domElement );
+
+        // Színtér létrehozása
+        scene = new THREE.Scene();
+
+        // Kamera létrehozása és vetítési paramétereinek beállítása
+        camera = new THREE.PerspectiveCamera( 75, aspectRatio, 0.1, 1000 );
+        camera.position.set( 0, 10, 20 );
+
+
+
+        // Objektumok létrehozása
+        scene.add(groupLoaded);
+        SystemGroup = new THREE.Group();
+        scene.add( SystemGroup );
+
+
+        let textureLoader = new THREE.TextureLoader();
+        let texture = textureLoader.load( 'assets/texture/asteroidtexture.jpg' );
+        let suntexture = textureLoader.load('assets/texture/sun.png')
+
+
+
+        //Alakzatok
+        let geometry3 = new THREE.ConeGeometry( 10, 20, 10 );
+        let material3 = new THREE.MeshPhongMaterial( {wireframe: false, side: THREE.DoubleSide} );
+        material3.color = new THREE.Color(0x0A730A);
+        cone1 = new THREE.Mesh( geometry3, material3 );
+        //cone1.lookAt(0,100,0)
+        cone1.position.set(0,0,-35);
+        cone1.rotation.set(THREE.MathUtils.degToRad(-90),0,0);
+        cone1.castShadow = true;
+        SystemGroup.add( cone1 );
+
+        let geometry2 = new THREE.ConeGeometry( 10, 20, 10 );
+        let material2 = new THREE.MeshPhongMaterial( { wireframe: false , side: THREE.DoubleSide} );
+        material2.color = new THREE.Color(0xCA2B1A);
+        cone = new THREE.Mesh( geometry2, material2 );
+        //cone.lookAt(0,-100,0)
+        cone.position.set(0,0,35);
+        cone.rotation.set(THREE.MathUtils.degToRad(90),0,0)
+        cone.castShadow = true;
+        SystemGroup.add( cone );
+
+        const geometry1 = new THREE.CylinderGeometry( 10, 10, 25, 10 );
+        const material1 = new THREE.MeshPhongMaterial( {color: 0xb58d8d, wireframe: false , side: THREE.DoubleSide} );
+        material1.color = new THREE.Color(0xFFFFFF);
+        cylinder = new THREE.Mesh( geometry1, material1 );
+        //cylinder.lookAt(0,100,0)
+        cylinder.rotation.set(THREE.MathUtils.degToRad(90),0,0);
+        cylinder.scale.set(1,2,1);
+        cylinder.castShadow = true;
+        cylinder.receiveShadow = true;
+        SystemGroup.add( cylinder );
+
+
+        const geometry = new THREE.TorusGeometry( 40, 6, 15, 10 );
+        const material = new THREE.MeshPhongMaterial( { wireframe: false , side: THREE.DoubleSide} );
+        material.color = new THREE.Color(0x38343C);
+        const torus = new THREE.Mesh( geometry, material );
+        torus.position.set(0,0,0);
+        torus.castShadow = false;
+        torus.receiveShadow = true;
+        SystemGroup.add( torus );
+
+        let boxGeometry4 = new THREE.BoxGeometry( 24, 1, 1 );
+        let boxMaterial4 = new THREE.MeshPhongMaterial( {  wireframe: false , side: THREE.DoubleSide} );
+        boxMaterial4.color = new THREE.Color(0xD7CDE4)
+        let boxMesh4 = new THREE.Mesh( boxGeometry4, boxMaterial4 );
+        boxMesh4.position.set(-21.5, 0, 0 );
+        boxMesh4.scale.set(1,4,4);
+        boxMesh4.castShadow = true;
+        boxMesh4.receiveShadow = false;
+        SystemGroup.add( boxMesh4 );
+
+        let boxGeometry3 = new THREE.BoxGeometry( 24, 1, 1 );
+        let boxMaterial3 = new THREE.MeshPhongMaterial( {  wireframe: false , side: THREE.DoubleSide} );
+        boxMaterial3.color = new THREE.Color(0xD7CDE4);
+        let boxMesh3 = new THREE.Mesh( boxGeometry3, boxMaterial3 );
+        boxMesh3.position.set(21.5, 0, 0 );
+        boxMesh3.scale.set(1,4,4);
+        boxMesh3.castShadow = true;
+        boxMesh3.receiveShadow = false;
+        SystemGroup.add( boxMesh3 );
+
+        let boxGeometry2 = new THREE.BoxGeometry( 1, 23, 1 );
+        let boxMaterial2 = new THREE.MeshPhongMaterial( {  wireframe: false , side: THREE.DoubleSide} );
+        boxMaterial2.color = new THREE.Color(0xD7CDE4);
+        let boxMesh2 = new THREE.Mesh( boxGeometry2, boxMaterial2 );
+        boxMesh2.position.set(0, 21, 0 );
+        boxMesh2.scale.set(4,1,4);
+        boxMesh2.castShadow = true;
+        boxMesh2.receiveShadow = false;
+        SystemGroup.add( boxMesh2 );
+
+        let boxGeometry1 = new THREE.BoxGeometry(1, 23, 1);
+        let boxMaterial1 = new THREE.MeshPhongMaterial( { wireframe: false , side: THREE.DoubleSide} );
+        boxMaterial1.color = new THREE.Color(0xD7CDE4);
+        let boxMesh1 = new THREE.Mesh( boxGeometry1, boxMaterial1 );
+        boxMesh1.position.set(0, -21, 0 );
+        boxMesh1.scale.set(4,1,4);
+        boxMesh1.castShadow = true;
+        SystemGroup.add( boxMesh1 );
+
+
+        szondaGeamotry = new THREE.DodecahedronGeometry(3, 0);
+        szondaMaterial = new THREE.MeshPhongMaterial( {color: 0xffffff, wireframe: false} );
+        szondaMesh = new THREE.Mesh( szondaGeamotry, szondaMaterial );
+        szondaMesh.position.set(-40, 300, -30 );
+        szondaMesh.scale.set(2,2,2);
+        szondaMesh.castShadow = true;
+        szondaMaterial.map = texture;
+        SystemGroup.add( szondaMesh );
+
+
+        let dodeka = new THREE.DodecahedronGeometry(5, 0);
+        let dodekaMaterial = new THREE.MeshPhongMaterial( { wireframe: false , side: THREE.DoubleSide} );
+        dodekaMaterial.color = new THREE.Color(0xffffff);
+        dodekaMesh = new THREE.Mesh( dodeka, dodekaMaterial );
+        dodekaMesh.position.set(-14, -300, -60 );
+        dodekaMesh.scale.set(2,2,2);
+        dodekaMesh.castShadow = true;
+        dodekaMaterial.map = texture;
+        SystemGroup.add( dodekaMesh );
+
+        let dodeka2 = new THREE.DodecahedronGeometry(7, 0);
+        let dodekaMaterial2 = new THREE.MeshPhongMaterial( { wireframe: false , side: THREE.DoubleSide} );
+        dodekaMaterial2.color = new THREE.Color(0xffffff);
+        dodekaMesh2 = new THREE.Mesh( dodeka2, dodekaMaterial2 );
+        dodekaMesh2.position.set(-140, 120, -30 );
+        dodekaMesh2.scale.set(2,2,3);
+        dodekaMesh2.castShadow = true;
+        dodekaMaterial2.map = texture;
+        SystemGroup.add( dodekaMesh2 );
+
+        let dodeka3 = new THREE.DodecahedronGeometry(4, 0);
+        let dodekaMaterial3 = new THREE.MeshPhongMaterial( { wireframe: false , side: THREE.DoubleSide} );
+        dodekaMaterial3.color = new THREE.Color(0xffffff);
+        dodekaMesh3 = new THREE.Mesh( dodeka3, dodekaMaterial3 );
+        dodekaMesh3.position.set(50, -200, -50 );
+        dodekaMesh3.scale.set(3,3,2);
+        dodekaMesh3.castShadow = true;
+        dodekaMaterial3.map = texture;
+        SystemGroup.add( dodekaMesh3 );
+
+        let dodeka4 = new THREE.DodecahedronGeometry(2, 0);
+        let dodekaMaterial4 = new THREE.MeshPhongMaterial( { wireframe: false , side: THREE.DoubleSide} );
+        dodekaMaterial4.color = new THREE.Color(0xffffff);
+        dodekaMesh4 = new THREE.Mesh( dodeka4, dodekaMaterial4 );
+        dodekaMesh4.position.set(-50, -200, -50 );
+        dodekaMesh4.scale.set(2,3,3);
+        dodekaMesh4.castShadow = true;
+        dodekaMaterial4.map = texture;
+        SystemGroup.add( dodekaMesh4 );
+
+        let dodeka5 = new THREE.DodecahedronGeometry(5, 0);
+        let dodekaMaterial5 = new THREE.MeshPhongMaterial( { wireframe: false , side: THREE.DoubleSide} );
+        dodekaMaterial5.color = new THREE.Color(0xffffff);
+        dodekaMesh5 = new THREE.Mesh( dodeka5, dodekaMaterial5 );
+        dodekaMesh5.position.set(20, -200, -160 );
+        dodekaMesh5.scale.set(4,2.5,4);
+        dodekaMesh5.castShadow = true;
+        dodekaMaterial5.map = texture;
+        SystemGroup.add( dodekaMesh5 );
+
+
+
+
+        const geometry7 = new THREE.SphereGeometry( 160, 50, 20 );
+        const material7 = new THREE.MeshBasicMaterial( { color: 0xffff00 , side: THREE.DoubleSide} );
+        spheremesh = new THREE.Mesh( geometry7, material7 );
+        spheremesh.position.set(700, 0, 50 );
+        material7.map= suntexture;
+        SystemGroup.add( spheremesh );
+
+
+
+
+        //Kamera
+        camera.position.x = 0;
+        camera.position.y = -100;
+        camera.position.z = 40;
+        camera.lookAt( scene.position.x, scene.position.y, scene.position.z );
+
+
+
+        //Fények
+        const light = new THREE.AmbientLight( 0x404040, 2);
+        scene.add( light );
+
+        let pLight = new THREE.PointLight( 0xE61D1D, 50 , 20  );
+        pLight.position.set( 1, 5, 50 );
+        scene.add( pLight );
+
+        const spotLight = new THREE.SpotLight( 0xffffff, 2 );
+        spotLight.position.set( -50, 400, -200 );
+        spotLight.angle = Math.PI / 16;
+        spotLight.penumbra = 0.4;
+        spotLight.castShadow = true;
+        spotLight.shadow.mapSize.width = 2048;
+        spotLight.shadow.mapSize.height = 2048;
+        SystemGroup.add( spotLight );
+
+        let spotLightHelper = new THREE.SpotLightHelper( spotLight );
+        SystemGroup.add( spotLightHelper );
+
+        let dLight = new THREE.DirectionalLight( 0xEBE312, 2 );
+        dLight.position.set( 700, 0, 50 );
+        dLight.castShadow = true
+        //dLight.target = sphere;
+        SystemGroup.add( dLight );
+
+        let directhelper = new THREE.DirectionalLightHelper( dLight );
+        SystemGroup.add( directhelper );
+
+
+        let axesHelper = new THREE.AxesHelper( 60 );
+        SystemGroup.add( axesHelper );
+
+        //
+
+        // Az ablak későbbi átméretezése esetén visszahívható függvény megadása
+        window.addEventListener( 'resize', handleWindowResize, false );
+
+        // Kamera vezérlés
+        controls = new TrackballControls( camera, renderer.domElement );
+        controls.rotateSpeed = 4.0;
+        controls.panSpeed = 1.0;
+
+        addControlGui();
+    }
+
+    function handleWindowResize() {
+        // Az ablak átméretezése esetén a kamera vetítési paraméterek újraszámolása
+        HEIGHT = window.innerHeight;
+        WIDTH = window.innerWidth;
+        console.log( 'WIDTH=' + WIDTH + '; HEIGHT=' + HEIGHT );
+        renderer.setSize( WIDTH, HEIGHT );
+        aspectRatio = WIDTH / HEIGHT;
+        camera.aspect = aspectRatio;
+        camera.updateProjectionMatrix();
+
+        render();
+    }
+
+    function animate() {
+
+
+        pos_x += 0.4 * pos_x_dir;
+
+        if( pos_x > 10.0 ) {
+            pos_x = 10.0 - ( pos_x - 10.0 );
+            pos_x_dir = -1.0;
+        }
+
+        if( pos_x < -10.0 ) {
+            pos_x = -10.0 - ( pos_x + 10.0 );
+            pos_x_dir = 1.0;
+        }
+
+        //cone1.position.x = pos_x;
+        //cone.position.x = pos_x;
+        //cylinder.position.x = pos_x;
+        szondaMesh.position.x = pos_x
+        dodekaMesh.position.x = pos_x;
+        dodekaMesh4.position.x = pos_x;
+        dodekaMesh2.position.x = pos_x;
+        dodekaMesh3.position.x = pos_x;
+        dodekaMesh5.position.x = pos_x;
+
+
+        spheremesh.rotation.z += 0.001
+
+        Angle += 0.5;
+
+        szondaMesh.position.z = 30;
+        szondaMesh.position.x = 150;
+        szondaMesh.position.y = Math.tan( Angle*Math.PI / 200) *700;
+
+        dodekaMesh.position.z = 70;
+        dodekaMesh.position.y =Math.tan(Angle*Math.PI / 160)*200 ;
+
+        dodekaMesh2.position.x = -140;
+        dodekaMesh2.position.y = Math.tan( Angle*Math.PI / 500) *200;
+
+        dodekaMesh3.position.y = Math.tan(  Angle*Math.PI / 300) *350;
+
+        dodekaMesh4.position.y = Math.tan(  Angle*Math.PI / 130) *200;
+
+        dodekaMesh5.position.y = Math.tan(  Angle*Math.PI / 200) *200;
+
+
+        controls.update();
+        requestAnimationFrame( animate );
+
+        render();
+    }
+
+    function render() {
+        // 3D -> 2D vetített kép kiszámítása.
+        // scene 3D színtér képe a camera kamera szemszögéből.
+        renderer.render( scene, camera );
+    }
+
+</script>
+</body>
+</html>
